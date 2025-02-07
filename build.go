@@ -23,8 +23,9 @@ var (
 	init=/init
 rootwait
 `
-	deps    	  = flag.Bool("depinstall", false, "install all dependencies")
+	deps    	  = flag.Bool("depinstall", false, "Install all dependencies")
 	fetch         = flag.Bool("fetch", false, "Fetch all the things we need")
+	build 		  = flag.Bool("build", false, "Only build the image")
 	kernelVersion = "6.12.12" // will be omitted for now, add later possibility to use modified version with enabled custom driver
 	corebootVer	  = "24.12" // TODO: add the possibility to use git version and/or the modified version for LinuxbootSMM
 	workingDir    = ""
@@ -261,7 +262,7 @@ func allFunc() error {
 	}{
 		{f: check, skip: false, ignore: false, n: "check environment"},
 		{f: depinstall, skip: !*deps, ignore: false, n: "Install dependencies"},
-		{f: corebootGet, skip: false || !*fetch, ignore: false, n: "Download coreboot"},
+		{f: corebootGet, skip: *build || !*fetch, ignore: false, n: "Download coreboot"},
 		{f: buildCoreboot, skip: false, ignore: false, n: "build coreboot"},
 	}
 
