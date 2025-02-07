@@ -1,4 +1,4 @@
-module build
+module github.com/micgor32/linuxbootsmm-builder 
 
 go 1.23
 
