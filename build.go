@@ -27,7 +27,9 @@ rootwait
 	fetch         = flag.Bool("fetch", false, "Fetch all the things we need")
 	build 		  = flag.Bool("build", false, "Only build the image")
 	kernelVersion = "6.12.12" // will be omitted for now, add later possibility to use modified version with enabled custom driver
-	corebootVer	  = "24.12" // TODO: add the possibility to use git version and/or the modified version for LinuxbootSMM
+	parseVersion  = flag.String("version", "24.12", "Desired version of coreboot") // TODO: add the possibility to use git version and/or the modified version for LinuxbootSMM. for now valid are either release tags or "latest"
+	configPath 	  = flag.String("config", "default", "Path to config file for coreboot") 
+	corebootVer   = *parseVersion
 	workingDir    = ""
 	linuxVersion  = "linux-stable"
 	homeDir       = ""
@@ -72,25 +74,42 @@ rootwait
 	}
 )
 
+func getGitVersion() error {
+	var args = []string{"clone", "https://review.coreboot.org/coreboot", "coreboot-latest"} // hardcode the "latest" for now
+	fmt.Printf("-------- Getting the coreboot via git %v\n", args)
+	cmd := exec.Command("git", args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("didn't clone coreboot %v", err)
+		return err
+	}
+	return nil
+}
+
 // for now use latest release version, TODO: fetch patched version
 func corebootGet() error {
-	var args = []string{"https://coreboot.org/releases/coreboot-" + corebootVer + ".tar.xz"}
-	fmt.Printf("-------- Getting coreboot via wget %v\n", "https://coreboot.org/releases/coreboot-" + corebootVer + ".tar.xz")
-	cmd := exec.Command("wget", args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("didn't wget coreboot %v", err)
-		return err
-	}
+	if corebootVer == "latest" {
+		getGitVersion()
+	} else {
+		var args = []string{"https://coreboot.org/releases/coreboot-" + corebootVer + ".tar.xz"}
+		fmt.Printf("-------- Getting coreboot via wget %v\n", "https://coreboot.org/releases/coreboot-" + corebootVer + ".tar.xz")
+		cmd := exec.Command("wget", args...)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("didn't wget coreboot %v", err)
+			return err
+		}
+	
 
-	cmd = exec.Command("tar", "xf", "coreboot-" + corebootVer + ".tar.xz")
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
+		cmd = exec.Command("tar", "xf", "coreboot-" + corebootVer + ".tar.xz")
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
 		fmt.Printf("untar failed %v", err)
-		return err
+			return err
+		}
 	}
 
-	cmd = exec.Command("make", "-j"+strconv.Itoa(threads), "crossgcc-i386", "CPUS=$(nproc)")
+	cmd := exec.Command("make", "-j"+strconv.Itoa(threads), "crossgcc-i386", "CPUS=$(nproc)")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "coreboot-" + corebootVer
 	if err := cmd.Run(); err != nil {
@@ -114,13 +133,17 @@ func corebootGet() error {
 		return err
 	}
 
-	var config = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/.config"}
-	cmd = exec.Command("wget", config...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "coreboot-" + corebootVer
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("obtaining config failed %v", err)
-		return err
+	if *configPath == "default" {
+		var config = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/.config"}
+		cmd = exec.Command("wget", config...)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		cmd.Dir = "coreboot-" + corebootVer
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("obtaining config failed %v", err)
+			return err
+		}
+	} else {
+		os.Link(*configPath, "coreboot-" + corebootVer + "/.config")
 	}
 	
 	return nil
@@ -135,7 +158,17 @@ func buildCoreboot() error {
 	cmd.Dir = "coreboot-" + corebootVer
 	err := cmd.Run()
 	if err != nil {
-		return err
+		// This is absolutely the ugliest solution, but for now
+		// when initramfs generation fails in the first run (which is certain)
+		// we just restart the compilation. TODO: fix this issue properly
+		cmd := exec.Command("make", "-j"+strconv.Itoa(threads))
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		cmd.Env = append(os.Environ(), "ARCH=x86_64")
+		cmd.Dir = "coreboot-" + corebootVer
+		err := cmd.Run()
+		if err != nil {
+			return err
+		}
 	}
 	if _, err := os.Stat("coreboot-" + corebootVer + "/build/coreboot.rom"); err != nil {
 		return err
