@@ -108,7 +108,7 @@ func corebootPatchConfig_x86_64() error {
 }
 
 func corebootPatchConfig_i386() error {
-	var patch = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-linuxboot-i368.patch"}
+	var patch = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-linuxboot-i386.patch"}
 	cmd := exec.Command("wget", patch...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/i386"
