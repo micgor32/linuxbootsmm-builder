@@ -15,11 +15,12 @@ Check whether you have all dependencies mentioned [here](https://doc.coreboot.or
 ```sh
 linuxbootsmm-builder --deps
 ```
-Then run:
+For the remaining usage options please see:
 ```sh
-linuxbootsmm-builder --fetch
-```
-Or alternatively if you already downloaded and unpacked the coreboot source:
-```sh
-linuxbootsmm-builder --build
+Usage of linuxbootsmm-builder:
+      --build            Only build the image
+      --config string    Path to config file for coreboot (default "default")
+      --depinstall       Install all dependencies
+      --fetch            Fetch all the things we need
+      --version string   Desired version of coreboot (default "24.12")
 ```
