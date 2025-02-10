@@ -86,7 +86,73 @@ func getGitVersion() error {
 	return nil
 }
 
-// for now use latest release version, TODO: fetch patched version
+func corebootPatchConfig_x86_64() error {
+	var patch = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-linuxboot-x86_64.patch"}
+	cmd := exec.Command("wget", patch...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/x86_64"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("obtaining patch failed %v", err)
+		return err
+	}
+
+	cmd = exec.Command("patch", "-u", "defconfig", "-i", "defconfig-linuxboot-x86_64.patch")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/x86_64"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("patching failed %v", err)
+		return err
+	}
+	
+	return nil
+}
+
+func corebootPatchConfig_i386() error {
+	var patch = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-linuxboot-i368.patch"}
+	cmd := exec.Command("wget", patch...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/i386"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("obtaining patch failed %v", err)
+		return err
+	}
+
+	cmd = exec.Command("patch", "-u", "defconfig", "-i", "defconfig-linuxboot-i386.patch")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/i386"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("patching failed %v", err)
+		return err
+	}
+	
+	return nil
+}
+
+// Essentially what we do here is to modify coreboot's makefile
+// to use patched kernel. Probably there exists more elegant solution,
+// hence, TODO: improve in the future.
+func kernelPatch() error {
+	var patch = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/linux-makefile.patch"}
+	cmd := exec.Command("wget", patch...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/targets"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("obtaining patch failed %v", err)
+		return err
+	}
+
+	cmd = exec.Command("patch", "-u", "linux.mk", "-i", "linux-makefile.patch")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/targets"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("patching failed %v", err)
+		return err
+	}
+	
+	return nil
+	
+}
+
 func corebootGet() error {
 	if corebootVer == "latest" {
 		getGitVersion()
@@ -108,6 +174,10 @@ func corebootGet() error {
 			return err
 		}
 	}
+
+	corebootPatchConfig_x86_64()
+	corebootPatchConfig_i386()
+	kernelPatch()
 
 	cmd := exec.Command("make", "-j"+strconv.Itoa(threads), "crossgcc-i386", "CPUS=$(nproc)")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr

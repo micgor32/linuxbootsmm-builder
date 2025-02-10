@@ -1,0 +1,36 @@
+--- targets/linux.mk	2025-01-22 16:43:13.000000000 +0100
++++ linux.mk	2025-02-10 16:19:58.063186671 +0100
+@@ -13,28 +13,16 @@
+ 
+ kernel_version = $(CONFIG_LINUXBOOT_KERNEL_VERSION)
+ kernel_dir = build/kernel-$(subst .,_,$(kernel_version))
+-kernel_tarball = linux-$(kernel_version).tar
+-kernel_mirror  = https://mirrors.edge.kernel.org/pub/linux/kernel
+-
+-ifeq ($(findstring x2.6.,x$(kernel_version)),x2.6.)
+-kernel_mirror_path := $(kernel_mirror)/v2.6
+-else ifeq ($(findstring x3.,x$(kernel_version)),x3.)
+-kernel_mirror_path := $(kernel_mirror)/v3.x
+-else ifeq ($(findstring x4.,x$(kernel_version)),x4.)
+-kernel_mirror_path := $(kernel_mirror)/v4.x
+-else ifeq ($(findstring x5.,x$(kernel_version)),x5.)
+-kernel_mirror_path := $(kernel_mirror)/v5.x
+-else ifeq ($(findstring x6.,x$(kernel_version)),x6.)
+-kernel_mirror_path := $(kernel_mirror)/v6.x
+-endif
++kernel_tarball = master.tar
++kernel_mirror  = https://github.com/micgor32/linux/archive/refs/heads
+ 
+ build/$(kernel_tarball).xz: | build
+ 	echo "    Test $(kernel_version)"
+-	echo "    WWW        $(kernel_mirror_path)/$(kernel_tarball).xz";
+-	curl -OLSs --output-dir build "$(kernel_mirror_path)/$(kernel_tarball).xz";
++	echo "    WWW        $(kernel_mirror_path)/$(kernel_tarball).gz";
++	curl -OLSs --output-dir build "$(kernel_mirror_path)/$(kernel_tarball).gz";
+ 
+ $(kernel_dir): build/$(kernel_tarball).xz
+-	echo "    XZ         $(kernel_tarball).xz";
++	echo "    GZ         $(kernel_tarball).gz";
+ 	mkdir $(kernel_dir);
+ 	tar xJf build/$(kernel_tarball).xz --strip 1 -C $(kernel_dir);
+ 
