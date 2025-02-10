@@ -11,7 +11,11 @@ Install using go:
 ```sh
 go install github.com/micgor32/linuxbootsmm-builder@latest
 ```
-And run:
+Check whether you have all dependencies mentioned [here](https://doc.coreboot.org/tutorial/part1.html#step-1-install-tools-and-libraries-needed-for-coreboot) installed, or run:
+```sh
+linuxbootsmm-builder --deps
+```
+Then run:
 ```sh
 linuxbootsmm-builder --fetch
 ```
