@@ -98,30 +98,35 @@ func corebootGet() error {
 		return err
 	}
 
-	// cmd = exec.Command("make", "-C", "payloads/coreinfo", "olddefconfig")
-	// cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	// cmd.Dir = "coreboot-" + corebootVer
-	// if err := cmd.Run(); err != nil {
-	// 	fmt.Printf("build failed %v", err)
-	// 	return err
-	// }
-	//
-	// cmd = exec.Command("make", "-C", "payloads/coreinfo")
-	// cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	// cmd.Dir = "coreboot-" + corebootVer
-	// if err := cmd.Run(); err != nil {
-	// 	fmt.Printf("toolchain build failed %v", err)
-	// 	return err
-	// }
+	cmd = exec.Command("make", "-C", "payloads/coreinfo", "olddefconfig")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "coreboot-" + corebootVer
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("build failed %v", err)
+		return err
+	}
+
+	cmd = exec.Command("make", "-C", "payloads/coreinfo")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "coreboot-" + corebootVer
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("toolchain build failed %v", err)
+		return err
+	}
+
+	var config = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/.config"}
+	cmd = exec.Command("wget", config...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "coreboot-" + corebootVer
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("obtaining config failed %v", err)
+		return err
+	}
 	
 	return nil
 }
 
 func buildCoreboot() error {
-	// if err := cp("config", "coreboot-" + corebootVer + "/.config"); err != nil {
-	// 	fmt.Printf("copying %v to coreboot-" + corebootVer + "/.config: %v", err)
-	// }
-
 	os.Link("config", "coreboot-" + corebootVer + "/.config")
 
 	cmd := exec.Command("make", "-j"+strconv.Itoa(threads))
