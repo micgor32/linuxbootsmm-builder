@@ -129,12 +129,12 @@ func corebootGet() error {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "coreboot-" + corebootVer
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("toolchain build failed %v", err)
+		fmt.Printf("build failed %v", err)
 		return err
 	}
 
 	if *configPath == "default" {
-		var config = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/.config"}
+		var config = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig"}
 		cmd = exec.Command("wget", config...)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		cmd.Dir = "coreboot-" + corebootVer
@@ -143,7 +143,15 @@ func corebootGet() error {
 			return err
 		}
 	} else {
-		os.Link(*configPath, "coreboot-" + corebootVer + "/.config")
+		os.Link(*configPath, "coreboot-" + corebootVer + "/defconfig")
+	}
+
+	cmd = exec.Command("make", "defconfig", "KBUILD_DEFCONFIG=defconfig")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "coreboot-" + corebootVer
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("generating config failed %v", err)
+		return err
 	}
 	
 	return nil
@@ -159,7 +167,7 @@ func buildCoreboot() error {
 	err := cmd.Run()
 	if err != nil {
 		// This is absolutely the ugliest solution, but for now
-		// when initramfs generation fails in the first run (which is certain)
+		// when initramfs generation fails in the first run (which is almost certain)
 		// we just restart the compilation. TODO: fix this issue properly
 		cmd := exec.Command("make", "-j"+strconv.Itoa(threads))
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
