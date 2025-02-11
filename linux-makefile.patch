@@ -1,6 +1,6 @@
 --- targets/linux.mk	2025-01-22 16:43:13.000000000 +0100
-+++ linux.mk	2025-02-10 16:19:58.063186671 +0100
-@@ -13,28 +13,16 @@
++++ linux.mk	2025-02-11 09:58:53.224034101 +0100
+@@ -13,30 +13,18 @@
  
  kernel_version = $(CONFIG_LINUXBOOT_KERNEL_VERSION)
  kernel_dir = build/kernel-$(subst .,_,$(kernel_version))
@@ -19,18 +19,23 @@
 -kernel_mirror_path := $(kernel_mirror)/v6.x
 -endif
 +kernel_tarball = master.tar
-+kernel_mirror  = https://github.com/micgor32/linux/archive/refs/heads
++kernel_mirror  = https://github.com/micgor32/linux.git
  
  build/$(kernel_tarball).xz: | build
  	echo "    Test $(kernel_version)"
 -	echo "    WWW        $(kernel_mirror_path)/$(kernel_tarball).xz";
 -	curl -OLSs --output-dir build "$(kernel_mirror_path)/$(kernel_tarball).xz";
-+	echo "    WWW        $(kernel_mirror_path)/$(kernel_tarball).gz";
-+	curl -OLSs --output-dir build "$(kernel_mirror_path)/$(kernel_tarball).gz";
++	echo "    Git clone $(kernel_mirror)";
++	git clone "$(kernel_mirror)" "$(kernel_dir)";
  
- $(kernel_dir): build/$(kernel_tarball).xz
+-$(kernel_dir): build/$(kernel_tarball).xz
 -	echo "    XZ         $(kernel_tarball).xz";
-+	echo "    GZ         $(kernel_tarball).gz";
- 	mkdir $(kernel_dir);
- 	tar xJf build/$(kernel_tarball).xz --strip 1 -C $(kernel_dir);
+-	mkdir $(kernel_dir);
+-	tar xJf build/$(kernel_tarball).xz --strip 1 -C $(kernel_dir);
++# $(kernel_dir): build/$(kernel_tarball).xz
++# 	echo "    GZ         $(kernel_tarball).gz";
++# 	mkdir $(kernel_dir);
++# 	tar xJf build/$(kernel_tarball).xz --strip 1 -C $(kernel_dir);
  
+ $(kernel_dir)/.config: $(CONFIG_LINUXBOOT_KERNEL_CONFIGFILE) | $(kernel_dir)
+ 	@echo "    CONFIG     Linux $(kernel_version)"
