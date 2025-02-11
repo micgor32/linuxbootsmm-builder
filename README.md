@@ -1,7 +1,7 @@
 # LinuxbootSMM PoC Builder
-A simple script to build coreboot image with LinuxbootSMM.
+A simple script to build coreboot image with LinuxBootSMM.
 
-Based on [corebootnerf](https://github.com/linuxboot/corebootnerf).
+Based on [corebootnerf](https://github.com/linuxboot/corebootnerf), modified to work with newer coreboot release and LinuxBootSMM.
 
 ## Prerequisites
 Please make sure you have Go >= 1.23, and your GOPATH is set up correctly.
