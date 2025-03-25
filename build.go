@@ -97,21 +97,21 @@ func corebootGet() error {
 		return err
 	}
 
-	cmd = exec.Command("make", "-C", "payloads/coreinfo", "olddefconfig")
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "coreboot-" + corebootVer
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("build failed %v", err)
-		return err
-	}
-
-	cmd = exec.Command("make", "-C", "payloads/coreinfo")
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "coreboot-" + corebootVer
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("build failed %v", err)
-		return err
-	}
+	// cmd = exec.Command("make", "-C", "payloads/coreinfo", "olddefconfig")
+	// cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	// cmd.Dir = "coreboot-" + corebootVer
+	// if err := cmd.Run(); err != nil {
+	// 	fmt.Printf("build failed %v", err)
+	// 	return err
+	// }
+	//
+	// cmd = exec.Command("make", "-C", "payloads/coreinfo")
+	// cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	// cmd.Dir = "coreboot-" + corebootVer
+	// if err := cmd.Run(); err != nil {
+	// 	fmt.Printf("build failed %v", err)
+	// 	return err
+	// }
 
 	if *configPath == "default" {
 		var config = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig"}
@@ -191,6 +191,11 @@ func kernelBuild() error {
 	cmd.Dir = "linux-smm"
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("error when builing the kernel %v", err)
+		return err
+	}
+
+	if err: = cp.Copy("linux-smm/arch/x86/boot/bzImage", "coreboot-" + corebootVer + "/site-local/Image"); err != nil {
+		fmt.Printf("error copying the kernel image %v", err)
 		return err
 	}
 	return nil
