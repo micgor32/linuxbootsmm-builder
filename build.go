@@ -203,7 +203,7 @@ func kernelBuild() error {
 
 func initramfsGen() error {
 
-	cmd := exec.Command("u-root", "-build=bb", "-initcmd=init", "uinitcmd=boot", "-defaultsh", "gosh", 	"-o", "initramfs_u-root.cpio", "core", "boot", "coreboot-app")
+	cmd := exec.Command("u-root", "-build=bb", "-initcmd=init", "uinitcmd='boot'", "-defaultsh", "gosh", 	"-o", "initramfs_u-root.cpio", "core", "boot", "coreboot-app")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "coreboot-" + corebootVer + "/site-local"
 	if err := cmd.Run(); err != nil {
