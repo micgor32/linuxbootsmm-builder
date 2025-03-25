@@ -256,12 +256,22 @@ func check() error {
 
 // Ugly, but fast way to deal with getting u-root up to run
 func urootInstall() error {
-	cmd := exec.Command("go", "install", "github.com/u-root/u-root@latest")
+	var args = []string{"clone", "https://github.com/u-root/u-root"}
+	cmd := exec.Command("git", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("didn't cloned the kernel %v", err)
+		return err
+	}
+
+	cmd = exec.Command("go", "install")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "u-root"
 	err := cmd.Run()
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
