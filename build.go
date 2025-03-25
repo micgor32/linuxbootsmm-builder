@@ -30,8 +30,6 @@ rootwait
 	build 		  = flag.Bool("build", false, "Only build the image")
 	configPath 	  = flag.String("config", "default", "Path to config file for coreboot") 
 	corebootVer   = "git" // hardcoded for now, we only need it to avoid situation when someone have "coreboot" dir already, we do not want to overwrite it
-	workingDir    = ""
-	linuxVersion  = "linux-stable"
 	blobsPath     = flag.String("blobs", "no", "Path to the custom site-local directory for coreboot")
 	threads       = runtime.NumCPU() + 4 // Number of threads to use when calling make.
 	// based on coreboot docs requirements
@@ -96,22 +94,6 @@ func corebootGet() error {
 		fmt.Printf("toolchain build failed %v", err)
 		return err
 	}
-
-	// cmd = exec.Command("make", "-C", "payloads/coreinfo", "olddefconfig")
-	// cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	// cmd.Dir = "coreboot-" + corebootVer
-	// if err := cmd.Run(); err != nil {
-	// 	fmt.Printf("build failed %v", err)
-	// 	return err
-	// }
-	//
-	// cmd = exec.Command("make", "-C", "payloads/coreinfo")
-	// cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	// cmd.Dir = "coreboot-" + corebootVer
-	// if err := cmd.Run(); err != nil {
-	// 	fmt.Printf("build failed %v", err)
-	// 	return err
-	// }
 
 	if *configPath == "default" {
 		var config = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig"}
@@ -181,10 +163,11 @@ func getKernel() error {
 }
 
 func kernelBuild() error {
-	if err := getKernel(); err != nil {
-		fmt.Printf("didn't cloned the kernel %v", err)
-		return err
-	}
+	// if err := getKernel(); err != nil {
+	// 	fmt.Printf("didn't cloned the kernel %v", err)
+	// 	return err
+	// }
+	getKernel() // do not bound it with error handling, in case of sources being already there the build fails, FIXME: add proper handling of this case
 	
 	cmd := exec.Command("make", "-j"+strconv.Itoa(threads))
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -202,12 +185,28 @@ func kernelBuild() error {
 }
 
 func initramfsGen() error {
-
-	cmd := exec.Command("u-root", "-build=bb", "-initcmd=init", "uinitcmd='boot'", "-defaultsh", "gosh", 	"-o", "initramfs_u-root.cpio", "core", "boot", "coreboot-app")
+	pwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(pwd + "/uroot/u-root","-build", "bb", "-initcmd", "init", "-uinitcmd", "boot", "-defaultsh", "gosh", "-o", "initramfs_u-root.cpio", "core", "boot", "coreboot-app")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "coreboot-" + corebootVer + "/site-local"
+	cmd.Dir = "uroot"
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("error when builing the kernel %v", err)
+		fmt.Printf("error when builing the initramfs %v", err)
+		return err
+	}
+
+	cmd = exec.Command("xz" ,"--check", "crc32", "--lzma2=dict=512KiB", "initramfs_u-root.cpio")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "uroot"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("error when builing the initramfs %v", err)
+		return err
+	}
+	
+	if err := cp.Copy("uroot/initramfs_u-root.cpio.xz", "coreboot-" + corebootVer + "/site-local/initramfs_u-root.cpio.xz"); err != nil {
+		fmt.Printf("error copying the initramfs %v", err)
 		return err
 	}
 
@@ -256,7 +255,7 @@ func check() error {
 
 // Ugly, but fast way to deal with getting u-root up to run
 func urootInstall() error {
-	var args = []string{"clone", "https://github.com/u-root/u-root"}
+	var args = []string{"clone", "https://github.com/u-root/u-root", "uroot"}
 	cmd := exec.Command("git", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -264,14 +263,14 @@ func urootInstall() error {
 		return err
 	}
 
-	cmd = exec.Command("go", "install")
+	cmd = exec.Command("go", "build")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "u-root"
+	cmd.Dir = "uroot"
 	err := cmd.Run()
 	if err != nil {
 		return err
 	}
-
+	 
 	return nil
 }
 
@@ -381,7 +380,6 @@ func allFunc() error {
 		ignore bool
 		n      string
 	}{
-		{f: check, skip: false, ignore: false, n: "check environment"},
 		{f: depinstall, skip: !*deps, ignore: false, n: "Install dependencies"},
 		{f: corebootGet, skip: *build || !*fetch, ignore: false, n: "Download coreboot"},
 		{f: buildCoreboot, skip: false, ignore: false, n: "build coreboot"},
