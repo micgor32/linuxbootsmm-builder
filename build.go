@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strconv"
+	"path/filepath"
 	"github.com/go-ini/ini"
 	
 	cp "github.com/otiai10/copy"
@@ -131,7 +132,11 @@ func corebootGet() error {
 			return err
 		}
 	} else {
-		
+		newpath := filepath.Join("coreboot-" + corebootVer, "site-local")
+		if err := os.MkdirAll(newpath, os.ModePerm); err != nil {
+			fmt.Printf("error creating site-local %v", err)
+			return err
+		}
 	}
 
 	cmd = exec.Command("make", "defconfig", "KBUILD_DEFCONFIG=defconfig")
