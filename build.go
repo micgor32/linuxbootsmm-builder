@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"github.com/go-ini/ini"
 
+	uroot "github.com/u-root/u-root"
 	flag "github.com/spf13/pflag"
 )
 
@@ -26,13 +27,11 @@ rootwait
 	deps    	  = flag.Bool("depinstall", false, "Install all dependencies")
 	fetch         = flag.Bool("fetch", false, "Fetch all the things we need")
 	build 		  = flag.Bool("build", false, "Only build the image")
-	kernelVersion = "6.12.12" // will be omitted for now, add later possibility to use modified version with enabled custom driver
-	parseVersion  = flag.String("version", "24.12", "Desired version of coreboot") // TODO: add the possibility to use git version and/or the modified version for LinuxbootSMM. for now valid are either release tags or "latest"
 	configPath 	  = flag.String("config", "default", "Path to config file for coreboot") 
-	corebootVer   = *parseVersion
+	corebootVer   = "git" // hardcoded for now, we only need it to avoid situation when someone have "coreboot" dir already, we do not want to overwrite it
 	workingDir    = ""
 	linuxVersion  = "linux-stable"
-	homeDir       = ""
+	blobsPath     = flag.String("blobs", "no", "Path to the custom site-local directory for coreboot")
 	threads       = runtime.NumCPU() + 4 // Number of threads to use when calling make.
 	// based on coreboot docs requirements
 	packageListDebian   = []string{ 
@@ -75,7 +74,7 @@ rootwait
 )
 
 func getGitVersion() error {
-	var args = []string{"clone", "https://review.coreboot.org/coreboot", "coreboot-latest"} // hardcode the "latest" for now
+	var args = []string{"clone", "https://github.com/micgor32/coreboot", "coreboot-" + corebootVer}
 	fmt.Printf("-------- Getting the coreboot via git %v\n", args)
 	cmd := exec.Command("git", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -86,99 +85,9 @@ func getGitVersion() error {
 	return nil
 }
 
-func corebootPatchConfig_x86_64() error {
-	var patch = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-linuxboot-x86_64.patch"}
-	cmd := exec.Command("wget", patch...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/x86_64"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("obtaining patch failed %v", err)
-		return err
-	}
-
-	cmd = exec.Command("patch", "-u", "defconfig", "-i", "defconfig-linuxboot-x86_64.patch")
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/x86_64"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("patching failed %v", err)
-		return err
-	}
-	
-	return nil
-}
-
-func corebootPatchConfig_i386() error {
-	var patch = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-linuxboot-i386.patch"}
-	cmd := exec.Command("wget", patch...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/i386"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("obtaining patch failed %v", err)
-		return err
-	}
-
-	cmd = exec.Command("patch", "-u", "defconfig", "-i", "defconfig-linuxboot-i386.patch")
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/i386"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("patching failed %v", err)
-		return err
-	}
-	
-	return nil
-}
-
-// Essentially what we do here is to modify coreboot's makefile
-// to use patched kernel. Probably there exists more elegant solution,
-// hence, TODO: improve in the future.
-func kernelPatch() error {
-	var patch = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/linux-makefile.patch"}
-	cmd := exec.Command("wget", patch...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/targets"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("obtaining patch failed %v", err)
-		return err
-	}
-
-	cmd = exec.Command("patch", "-u", "linux.mk", "-i", "linux-makefile.patch")
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "coreboot-" + corebootVer + "/payloads/external/LinuxBoot/targets"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("patching failed %v", err)
-		return err
-	}
-	
-	return nil
-	
-}
-
 func corebootGet() error {
-	if corebootVer == "latest" {
-		getGitVersion()
-	} else {
-		var args = []string{"https://coreboot.org/releases/coreboot-" + corebootVer + ".tar.xz"}
-		fmt.Printf("-------- Getting coreboot via wget %v\n", "https://coreboot.org/releases/coreboot-" + corebootVer + ".tar.xz")
-		cmd := exec.Command("wget", args...)
-		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-		if err := cmd.Run(); err != nil {
-			fmt.Printf("didn't wget coreboot %v", err)
-			return err
-		}
+	getGitVersion()
 	
-
-		cmd = exec.Command("tar", "xf", "coreboot-" + corebootVer + ".tar.xz")
-		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-		if err := cmd.Run(); err != nil {
-		fmt.Printf("untar failed %v", err)
-			return err
-		}
-	}
-
-	corebootPatchConfig_x86_64()
-	corebootPatchConfig_i386()
-	kernelPatch()
-
 	cmd := exec.Command("make", "-j"+strconv.Itoa(threads), "crossgcc-i386", "CPUS=$(nproc)")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "coreboot-" + corebootVer
@@ -216,6 +125,13 @@ func corebootGet() error {
 		os.Link(*configPath, "coreboot-" + corebootVer + "/defconfig")
 	}
 
+	if *blobsPath != "no" {
+		if err := os.CopyFS(*blobsPath, "coreboot-" + corebootVer + "site-local"); err != nil {
+			fmt.Printf("copying custom site-local failed %v", err)
+			return err
+		}
+	}
+
 	cmd = exec.Command("make", "defconfig", "KBUILD_DEFCONFIG=defconfig")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "coreboot-" + corebootVer
@@ -227,27 +143,73 @@ func corebootGet() error {
 	return nil
 }
 
+func getKernel() error {
+	var args = []string{"clone", "https://github.com/micgor32/linux", "linux-smm"}
+	fmt.Printf("-------- Getting the kernel via git %v\n", args)
+	cmd := exec.Command("git", args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("didn't cloned the kernel %v", err)
+		return err
+	}
+
+	var config = []string{"-O", ".config", "https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-linux"}
+	cmd = exec.Command("wget", config...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "linux-smm"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("obtaining config failed %v", err)
+		return err
+	}
+
+	cmd = exec.Command("make", "olddefconfig")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "linux-smm"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("generating config failed %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func kernelBuild() error {
+	if err := getKernel(); err != nil {
+		fmt.Printf("didn't cloned the kernel %v", err)
+		return err
+	}
+	
+	cmd := exec.Command("make", "-j"+strconv.Itoa(threads))
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "linux-smm"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("error when builing the kernel %v", err)
+		return err
+	}
+	return nil
+}
+
+func initramfsGen() error {
+	return nil
+}
+
 func buildCoreboot() error {
-	os.Link("config", "coreboot-" + corebootVer + "/.config")
+	// Let's check whether the config is there
+	if _, err := os.Stat("coreboot-" + corebootVer + "/.config"); err != nil {
+		return err
+	}
+
+	kernelBuild()
+	initramfsGen()
 
 	cmd := exec.Command("make", "-j"+strconv.Itoa(threads))
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Env = append(os.Environ(), "ARCH=x86_64")
 	cmd.Dir = "coreboot-" + corebootVer
 	err := cmd.Run()
 	if err != nil {
-		// This is absolutely the ugliest solution, but for now
-		// when initramfs generation fails in the first run (which is almost certain)
-		// we just restart the compilation. TODO: fix this issue properly
-		cmd := exec.Command("make", "-j"+strconv.Itoa(threads))
-		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-		cmd.Env = append(os.Environ(), "ARCH=x86_64")
-		cmd.Dir = "coreboot-" + corebootVer
-		err := cmd.Run()
-		if err != nil {
-			return err
-		}
+		return err
 	}
+	
 	if _, err := os.Stat("coreboot-" + corebootVer + "/build/coreboot.rom"); err != nil {
 		return err
 	}
@@ -404,7 +366,7 @@ func allFunc() error {
 
 func main() {
 	flag.Parse()
-	log.Printf("Using kernel %v\n", kernelVersion)
+	log.Printf("Using patched kernel for LinuxBootSMM\n")
 	if err := allFunc(); err != nil {
 		log.Fatalf("fail error is : %v", err)
 	}
