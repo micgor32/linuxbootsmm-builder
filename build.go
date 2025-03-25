@@ -194,7 +194,7 @@ func kernelBuild() error {
 		return err
 	}
 
-	if err: = cp.Copy("linux-smm/arch/x86/boot/bzImage", "coreboot-" + corebootVer + "/site-local/Image"); err != nil {
+	if err := cp.Copy("linux-smm/arch/x86/boot/bzImage", "coreboot-" + corebootVer + "/site-local/Image"); err != nil {
 		fmt.Printf("error copying the kernel image %v", err)
 		return err
 	}
