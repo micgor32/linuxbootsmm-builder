@@ -14,8 +14,8 @@ import (
 	"runtime"
 	"strconv"
 	"github.com/go-ini/ini"
-
-	uroot "github.com/u-root/u-root"
+	
+	cp "github.com/otiai10/copy"
 	flag "github.com/spf13/pflag"
 )
 
@@ -126,10 +126,12 @@ func corebootGet() error {
 	}
 
 	if *blobsPath != "no" {
-		if err := os.CopyFS(*blobsPath, "coreboot-" + corebootVer + "site-local"); err != nil {
+		if err := cp.Copy(*blobsPath, "coreboot-" + corebootVer + "/site-local"); err != nil {
 			fmt.Printf("copying custom site-local failed %v", err)
 			return err
 		}
+	} else {
+		
 	}
 
 	cmd = exec.Command("make", "defconfig", "KBUILD_DEFCONFIG=defconfig")
@@ -190,6 +192,15 @@ func kernelBuild() error {
 }
 
 func initramfsGen() error {
+
+	cmd := exec.Command("u-root", "-build=bb", "-initcmd=init", "uinitcmd=boot", "-defaultsh", "gosh", 	"-o", "initramfs_u-root.cpio", "core", "boot", "coreboot-app")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "coreboot-" + corebootVer + "/site-local"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("error when builing the kernel %v", err)
+		return err
+	}
+
 	return nil
 }
 
@@ -233,6 +244,17 @@ func check() error {
 	return nil
 }
 
+// Ugly, but fast way to deal with getting u-root up to run
+func urootInstall() error {
+	cmd := exec.Command("go", "install", "github.com/u-root/u-root@latest")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func pacmaninstall() error {
 	missing := []string{}
 	for _, packageName := range packageListArch {
@@ -253,7 +275,6 @@ func pacmaninstall() error {
 	cmd := exec.Command("sudo", get...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return cmd.Run()
-	
 }
 
 
@@ -277,7 +298,6 @@ func dnfinstall() error {
 	cmd := exec.Command("sudo", get...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return cmd.Run()
-	
 }
 
 func aptget() error {
@@ -304,6 +324,9 @@ func aptget() error {
 }
 
 func depinstall() error {
+	// Regardless of the distro, we need u-root
+	urootInstall()
+
 	cfg, err := ini.Load("/etc/os-release")
     if err != nil {
         log.Fatal("Fail to read file: ", err)
