@@ -27,8 +27,9 @@ rootwait
 `
 	deps    	  = flag.Bool("depinstall", false, "Install all dependencies")
 	fetch         = flag.Bool("fetch", false, "Fetch all the things we need")
-	build 		  = flag.Bool("build", false, "Only build the image")
+	build 		  = flag.Bool("build", false, "Only build the image (you have to provide Linux image and initramfs)")
 	configPath 	  = flag.String("config", "default", "Path to config file for coreboot") 
+	smpEnabled    = flag.Bool("smp", false, "Compile Linux with SMP support")
 	corebootVer   = "git" // hardcoded for now, we only need it to avoid situation when someone have "coreboot" dir already, we do not want to overwrite it
 	blobsPath     = flag.String("blobs", "no", "Path to the custom site-local directory for coreboot")
 	threads       = runtime.NumCPU() + 4 // Number of threads to use when calling make.
@@ -46,6 +47,7 @@ rootwait
 		"libssl-dev",
 		"zlib1g-dev",
 		"pkgconf",
+		"qemu-system-x86",
 	}
 	packageListArch = []string{
 		"base-devel",
@@ -54,6 +56,7 @@ rootwait
 		"gcc-ada",
 		"ncurses",
 		"zlib",
+		"qemu-full",
 	}
 	packageListRedhat = []string{
 		"git",
@@ -69,6 +72,7 @@ rootwait
 		"wget",
 		"zlib-devel",
 		"patch",
+		"qemu",
 	}
 )
 
@@ -96,7 +100,16 @@ func corebootGet() error {
 	}
 
 	if *configPath == "default" {
-		var config = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig"}
+		var config = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-raptorlake"}
+		cmd = exec.Command("wget", config...)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		cmd.Dir = "coreboot-" + corebootVer
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("obtaining config failed %v", err)
+			return err
+		}
+	} else if *configPath == "q35" {
+		var config = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-qemu"}
 		cmd = exec.Command("wget", config...)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		cmd.Dir = "coreboot-" + corebootVer
@@ -132,8 +145,49 @@ func corebootGet() error {
 	return nil
 }
 
+func patchKernel() error {
+	// TODO: consider also checking the patch correctness before applying (i.e. run git apply --check *path_to_patch*).
+	var patchParsers = []string{"-O", ".config", "https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
+	cmd := exec.Command("wget", patchParsers...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "linux-smm"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("obtaining patch failed %v", err)
+		return err
+	}
+
+	var patchLoader = []string{"-O", ".config", "https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0002-loader-for-linux-owned-smi-handler.diff"}
+	cmd = exec.Command("wget", patchLoader...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "linux-smm"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("obtaining patch failed %v", err)
+		return err
+	}
+
+	var applyParsers = []string{"am", "", "patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
+	cmd = exec.Command("git", applyParsers...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "linux-smm"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("applying patch failed %v", err)
+		return err
+	}
+
+	var applyLoader = []string{"am", "", "patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
+	cmd = exec.Command("git", applyLoader...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Dir = "linux-smm"
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("applying patch failed %v", err)
+		return err
+	}
+	
+	return nil
+}
+
 func getKernel() error {
-	var args = []string{"clone", "https://github.com/micgor32/linux", "linux-smm"}
+	var args = []string{"clone", "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git", "linux-smm"}
 	fmt.Printf("-------- Getting the kernel via git %v\n", args)
 	cmd := exec.Command("git", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -142,13 +196,26 @@ func getKernel() error {
 		return err
 	}
 
-	var config = []string{"-O", ".config", "https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-linux"}
-	cmd = exec.Command("wget", config...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "linux-smm"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("obtaining config failed %v", err)
-		return err
+	patchKernel();
+
+	if *smpEnabled {
+		var config = []string{"-O", ".config", "https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-linux-smp"}
+		cmd = exec.Command("wget", config...)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		cmd.Dir = "linux-smm"
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("obtaining config failed %v", err)
+			return err
+		}
+	} else {
+		var config = []string{"-O", ".config", "https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-linux"}
+		cmd = exec.Command("wget", config...)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		cmd.Dir = "linux-smm"
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("obtaining config failed %v", err)
+			return err
+		}
 	}
 
 	cmd = exec.Command("make", "olddefconfig")
@@ -311,7 +378,7 @@ func dnfinstall() error {
 		return nil
 	}
 
-	fmt.Printf("Using dng to get %v\n", missing)
+	fmt.Printf("Using dnf to get %v\n", missing)
 	get := []string{"dnf", "-y", "install"}
 	get = append(get, missing...)
 	cmd := exec.Command("sudo", get...)
