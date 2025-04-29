@@ -82,21 +82,24 @@ func getGitVersion() error {
 	cmd := exec.Command("git", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("didn't clone coreboot %v", err)
+		fmt.Printf("didn't clone coreboot %v\n", err)
 		return err
 	}
 	return nil
 }
 
 func corebootGet() error {
-	getGitVersion()
-	
 	cmd := exec.Command("make", "-j"+strconv.Itoa(threads), "crossgcc-i386", "CPUS=$(nproc)")
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "coreboot-" + corebootVer
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("toolchain build failed %v", err)
-		return err
+
+	if !*build {
+		getGitVersion()
+	
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		cmd.Dir = "coreboot-" + corebootVer
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("toolchain build failed %v\n", err)
+			return err
+		}
 	}
 
 	if *configPath == "default" {
@@ -114,7 +117,7 @@ func corebootGet() error {
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		cmd.Dir = "coreboot-" + corebootVer
 		if err := cmd.Run(); err != nil {
-			fmt.Printf("obtaining config failed %v", err)
+			fmt.Printf("obtaining config failed %v\n", err)
 			return err
 		}
 	} else {
@@ -126,10 +129,10 @@ func corebootGet() error {
 			fmt.Printf("copying custom site-local failed %v", err)
 			return err
 		}
-	} else {
+	} else if !*build { // assume that --build was not run without first running --fetch
 		newpath := filepath.Join("coreboot-" + corebootVer, "site-local")
 		if err := os.MkdirAll(newpath, os.ModePerm); err != nil {
-			fmt.Printf("error creating site-local %v", err)
+			fmt.Printf("error creating site-local %v\n", err)
 			return err
 		}
 	}
@@ -138,7 +141,7 @@ func corebootGet() error {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "coreboot-" + corebootVer
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("generating config failed %v", err)
+		fmt.Printf("generating config failed %v\n", err)
 		return err
 	}
 	
@@ -164,7 +167,8 @@ func patchKernel() error {
 		fmt.Printf("obtaining patch failed %v", err)
 		return err
 	}
-
+	
+	fmt.Printf("--------  Patching kernel\n")
 	var applyParsers = []string{"am", "patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
 	cmd = exec.Command("git", applyParsers...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -179,7 +183,7 @@ func patchKernel() error {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "linux-smm"
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("applying patch failed %v", err)
+		fmt.Printf("applying patch failed %v\n", err)
 		return err
 	}
 	
@@ -188,15 +192,17 @@ func patchKernel() error {
 
 func getKernel() error {
 	var args = []string{"clone", "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git", "linux-smm"}
-	fmt.Printf("-------- Getting the kernel via git %v\n", args)
 	cmd := exec.Command("git", args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("didn't cloned the kernel %v", err)
-		//return err
+	
+	if !*build {
+		fmt.Printf("-------- Getting the kernel via git %v\n", args)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("didn't cloned the kernel %v\n", err)
+			return err
+		}
+		patchKernel();
 	}
-
-	patchKernel();
 
 	if *smpEnabled {
 		var config = []string{"-O", ".config", "https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-linux-smp"}
@@ -204,7 +210,7 @@ func getKernel() error {
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		cmd.Dir = "linux-smm"
 		if err := cmd.Run(); err != nil {
-			fmt.Printf("obtaining config failed %v", err)
+			fmt.Printf("obtaining config failed %v\n", err)
 			return err
 		}
 	} else {
@@ -213,16 +219,17 @@ func getKernel() error {
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		cmd.Dir = "linux-smm"
 		if err := cmd.Run(); err != nil {
-			fmt.Printf("obtaining config failed %v", err)
+			fmt.Printf("obtaining config failed %v\n", err)
 			return err
 		}
 	}
 
+	fmt.Printf("-------- Writing defconfig \n")
 	cmd = exec.Command("make", "olddefconfig")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "linux-smm"
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("generating config failed %v", err)
+		fmt.Printf("generating config failed %v\n", err)
 		return err
 	}
 
@@ -230,12 +237,9 @@ func getKernel() error {
 }
 
 func kernelBuild() error {
-	// if err := getKernel(); err != nil {
-	// 	fmt.Printf("didn't cloned the kernel %v", err)
-	// 	return err
-	// }
-	getKernel() // do not bound it with error handling, in case of sources being already there the build fails, FIXME: add proper handling of this case
-	
+	getKernel()
+
+	fmt.Printf("--------  Building kernel\n")
 	cmd := exec.Command("make", "-j"+strconv.Itoa(threads))
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "linux-smm"
@@ -245,7 +249,7 @@ func kernelBuild() error {
 	}
 
 	if err := cp.Copy("linux-smm/arch/x86/boot/bzImage", "coreboot-" + corebootVer + "/site-local/Image"); err != nil {
-		fmt.Printf("error copying the kernel image %v", err)
+		fmt.Printf("error copying the kernel image %v\n", err)
 		return err
 	}
 	return nil
@@ -260,20 +264,20 @@ func initramfsGen() error {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "uroot"
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("error when builing the initramfs %v", err)
+		fmt.Printf("error when builing the initramfs %v\n", err)
 		return err
 	}
 
-	cmd = exec.Command("xz" ,"--check", "crc32", "--lzma2=dict=512KiB", "initramfs_u-root.cpio")
+	cmd = exec.Command("xz", "-f","--check", "crc32", "--lzma2=dict=512KiB", "initramfs_u-root.cpio")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "uroot"
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("error when builing the initramfs %v", err)
+		fmt.Printf("error when builing the initramfs %v\n", err)
 		return err
 	}
 	
 	if err := cp.Copy("uroot/initramfs_u-root.cpio.xz", "coreboot-" + corebootVer + "/site-local/initramfs_u-root.cpio.xz"); err != nil {
-		fmt.Printf("error copying the initramfs %v", err)
+		fmt.Printf("error copying the initramfs %v\n", err)
 		return err
 	}
 
@@ -287,6 +291,8 @@ func buildCoreboot() error {
 	}
 
 	kernelBuild()
+	corebootGet()
+
 	initramfsGen()
 
 	cmd := exec.Command("make", "-j"+strconv.Itoa(threads))
@@ -300,7 +306,7 @@ func buildCoreboot() error {
 	if _, err := os.Stat("coreboot-" + corebootVer + "/build/coreboot.rom"); err != nil {
 		return err
 	}
-	fmt.Printf("build/coreboot.rom created")
+	fmt.Printf("build/coreboot.rom created\n")
 	return nil
 }
 
@@ -315,7 +321,7 @@ func run(name string, args ...string) error {
 
 func check() error {
 	if os.Getenv("GOPATH") == "" {
-		return fmt.Errorf("You have to set GOPATH.")
+		return fmt.Errorf("You have to set GOPATH.\n")
 	}
 	return nil
 }
@@ -326,7 +332,7 @@ func urootInstall() error {
 	cmd := exec.Command("git", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("didn't cloned the kernel %v", err)
+		fmt.Printf("didn't cloned the kernel %v\n", err)
 		return err
 	}
 
@@ -351,7 +357,7 @@ func pacmaninstall() error {
 	}
 
 	if len(missing) == 0 {
-		fmt.Println("No missing dependencies to install")
+		fmt.Println("No missing dependencies to install\n")
 		return nil
 	}
 
@@ -415,7 +421,7 @@ func depinstall() error {
 
 	cfg, err := ini.Load("/etc/os-release")
     if err != nil {
-        log.Fatal("Fail to read file: ", err)
+        log.Fatal("Fail to read file: %v\n", err)
     }
 
     ConfigParams := make(map[string]string)
@@ -434,7 +440,7 @@ func depinstall() error {
 		case "arch":
 			pacmaninstall()
 		default:
-			log.Fatal("No matching OS found")
+			log.Fatal("No matching OS found\n")
 	}
 
 	return nil
