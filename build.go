@@ -77,7 +77,7 @@ rootwait
 )
 
 func getGitVersion() error {
-	var args = []string{"clone", "https://github.com/micgor32/coreboot", "coreboot-" + corebootVer}
+	var args = []string{"clone", "https://github.com/micgor32/coreboot.git", "coreboot-" + corebootVer}
 	fmt.Printf("-------- Getting the coreboot via git %v\n", args)
 	cmd := exec.Command("git", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -100,7 +100,7 @@ func corebootGet() error {
 	}
 
 	if *configPath == "default" {
-		var config = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-raptorlake"}
+		var config = []string{"-O", "defconfig", "https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-raptorlake"}
 		cmd = exec.Command("wget", config...)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		cmd.Dir = "coreboot-" + corebootVer
@@ -109,7 +109,7 @@ func corebootGet() error {
 			return err
 		}
 	} else if *configPath == "q35" {
-		var config = []string{"https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-qemu"}
+		var config = []string{"-O", "defconfig", "https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-qemu"}
 		cmd = exec.Command("wget", config...)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		cmd.Dir = "coreboot-" + corebootVer
@@ -147,7 +147,7 @@ func corebootGet() error {
 
 func patchKernel() error {
 	// TODO: consider also checking the patch correctness before applying (i.e. run git apply --check *path_to_patch*).
-	var patchParsers = []string{"-O", ".config", "https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
+	var patchParsers = []string{"https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
 	cmd := exec.Command("wget", patchParsers...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "linux-smm"
@@ -156,7 +156,7 @@ func patchKernel() error {
 		return err
 	}
 
-	var patchLoader = []string{"-O", ".config", "https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0002-loader-for-linux-owned-smi-handler.diff"}
+	var patchLoader = []string{"https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0002-loader-for-linux-owned-smi-handler.diff"}
 	cmd = exec.Command("wget", patchLoader...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "linux-smm"
@@ -165,7 +165,7 @@ func patchKernel() error {
 		return err
 	}
 
-	var applyParsers = []string{"am", "", "patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
+	var applyParsers = []string{"am", "patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
 	cmd = exec.Command("git", applyParsers...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "linux-smm"
@@ -174,7 +174,7 @@ func patchKernel() error {
 		return err
 	}
 
-	var applyLoader = []string{"am", "", "patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
+	var applyLoader = []string{"am", "patch-0002-loader-for-linux-owned-smi-handler.diff"}
 	cmd = exec.Command("git", applyLoader...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "linux-smm"
@@ -193,7 +193,7 @@ func getKernel() error {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("didn't cloned the kernel %v", err)
-		return err
+		//return err
 	}
 
 	patchKernel();
@@ -356,7 +356,7 @@ func pacmaninstall() error {
 	}
 
 	fmt.Printf("Using pacman to get %v\n", missing)
-	get := []string{"pacman", "-S", "--noconfim"}
+	get := []string{"pacman", "-S", "--noconfirm"}
 	get = append(get, missing...)
 	cmd := exec.Command("sudo", get...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -449,7 +449,7 @@ func allFunc() error {
 	}{
 		{f: depinstall, skip: !*deps, ignore: false, n: "Install dependencies"},
 		{f: corebootGet, skip: *build || !*fetch, ignore: false, n: "Download coreboot"},
-		{f: buildCoreboot, skip: false, ignore: false, n: "build coreboot"},
+		{f: buildCoreboot, skip: *deps, ignore: false, n: "build coreboot"},
 	}
 
 	for _, c := range cmds {

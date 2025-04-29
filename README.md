@@ -51,7 +51,7 @@ In general, regardless of SMP, the following options should stay enabled in a cu
  - `CONFIG_DEBUG_KERNEL`: (optional) makes kernel more verbose, i.a. enables more logs when issuing SMIs.
 
 ## Example usage - QEMU Q35
-In order to build an example of coreboot+LinuxBootSMM, one can QEMU emulator:
+In order to build an example of coreboot+LinuxBootSMM, one can use QEMU emulator:
 ```sh
 # Without SMP
 cd /tmp
