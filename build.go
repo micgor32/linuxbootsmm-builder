@@ -328,17 +328,17 @@ func check() error {
 
 // Ugly, but fast way to deal with getting u-root up to run
 func urootInstall() error {
-	var args = []string{"clone", "https://github.com/u-root/u-root", "uroot"}
+	var args = []string{"clone", "https://github.com/u-root/u-root", "/tmp/uroot"}
 	cmd := exec.Command("git", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("didn't cloned the kernel %v\n", err)
+		fmt.Printf("didn't cloned uroot %v\n", err)
 		return err
 	}
 
 	cmd = exec.Command("go", "build")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "uroot"
+	cmd.Dir = "/tmp/uroot"
 	err := cmd.Run()
 	if err != nil {
 		return err
