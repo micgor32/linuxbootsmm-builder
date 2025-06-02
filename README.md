@@ -23,35 +23,17 @@ linuxbootsmm-builder --depinstall
 For the remaining usage options please see:
 ```sh
 Usage of linuxbootsmm-builder:
+      --b string         Target architecture for coreboot (default "32")
       --blobs string     Path to the custom site-local directory for coreboot (default "no")
       --build            Only build the image
       --config string    Path to config file for coreboot (default "default")
       --smp              Compile Linux with SMP support
       --depinstall       Install all dependencies
       --fetch            Fetch all the things we need
+      --testing int      Compile LinuxBootSMM for integration tests scenarios
 ```
 If no custom `site-local` is provided (i.e. no `--blobs` specified), the builder will create empty one in which the kernel image and initramfs are going to be placed after compilation. 
 Please also note that when using default config, builder script assumes that it is being run under in `/tmp`!
-
-## Considerations when creating custom configuration files (coreboot)
-In general providing custom configs should not introduce and unexpected errors during the compilation (does **not** apply to the rom image being functional!), as long as the following configuration options are enabled:
-- `CONFIG_SMM_PAYLOAD_INTERFACE`: this tells coreboot to enable SMM payload driver.
-- `CONFIG_SMM_PAYLOAD_INTERFACE_PAYLOAD_MM`: enables MM payload interface, needed by Linux to preform post-boot unlock/lock.
-- `CONFIG_PAYLOAD_LINUXBOOT`: enables LinuxBoot
-- `CONFIG_LINUXBOOT_KERNEL_PATH="/tmp/coreboot-git/site-local/Image"`: the builder tool compiles patched Linux kernel separetely and places it under `site-local/Image`, without this path being specified, coreboot would compile unpatched Linux kernel during the its own compile process.
-- `CONFIG_LINUXBOOT_INITRAMFS_PATH="/tmp/coreboot-git/site-local/initramfs_u-root.cpio"`: similarly as with the kernel, initramfs is build separately from coreboot by the builder.
-- `CONFIG_DEBUG_SMI`: enables more verbose boot logs with regards to SMIs.
-
-## Considerations when creating custom configuration files (Linux)
-There are two configs provided: one with `CONFIG_SMP` enabled and one without. LinuxBoot traditionally does not come with SMP enabled (as there is no need real for SMP support), but
-it can be enabled if there is a need for sending SMIs in parallel from different CPUs.
-In general, regardless of SMP, the following options should stay enabled in a custom config:
- - `CONFIG_GOOGLE_FIRMWARE`: enables `drivers/firmware/google` module.
- - `CONFIG_GOOGLE_COREBOOT_TABLE`: enables interface for accessing coreboot table.
- - `CONFIG_GOOGLE_FRAMEBUFFER_COREBOOT`: enables the kernel to search for a framebuffer in the coreboot table.
- - `CONFIG_GOOGLE_MEMCONSOLE_COREBOOT`: enables the kernel to search for a firmware log in the coreboot table.
- - `CONFIG_SMM_DRIVER`: enables the support for SMM handling in Linux.
- - `CONFIG_DEBUG_KERNEL`: (optional) makes kernel more verbose, i.a. enables more logs when issuing SMIs.
 
 ## Example usage - QEMU Q35
 In order to build an example of coreboot+LinuxBootSMM, one can use QEMU emulator:

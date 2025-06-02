@@ -20,6 +20,14 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
+type Patch int64
+
+const (
+	coreboot Patch = 0
+	linux Patch = 1
+	tests Patch = 2
+)
+
 var (
 	configTxt = `loglevel=1
 	init=/init
@@ -30,8 +38,10 @@ rootwait
 	build 		  = flag.Bool("build", false, "Only build the image (you have to provide Linux image and initramfs)")
 	configPath 	  = flag.String("config", "default", "Path to config file for coreboot") 
 	smpEnabled    = flag.Bool("smp", false, "Compile Linux with SMP support")
+	bitness		  = flag.String("b", "32", "Target architecture for coreboot")
 	corebootVer   = "git" // hardcoded for now, we only need it to avoid situation when someone have "coreboot" dir already, we do not want to overwrite it
 	blobsPath     = flag.String("blobs", "no", "Path to the custom site-local directory for coreboot")
+	testing		  = flag.Int("testing", 0, "Compile LinuxBootSMM for integration tests scenarios")
 	threads       = runtime.NumCPU() + 4 // Number of threads to use when calling make.
 	// based on coreboot docs requirements
 	packageListDebian   = []string{ 
@@ -74,7 +84,75 @@ rootwait
 		"patch",
 		"qemu",
 	}
+	patchesCoreboot = []string{
+		"0001-drivers-payload_mm_interface-Add-payload-MM-config-s.patch",
+		"0002-drivers-payload_mm_interface-Implement-payload-MM-co.patch",
+		"0003-cpu-x86-smm-Add-SMM-implementations-of-smm_-region.patch",
+		"0004-cpu-x86-smm-Conditionally-reserve-an-SMRAM-area-for-.patch",
+		"0005-fix-Kconfig-for-MM-payload-from-later-patches.patch",
+		"0006-feat-placing-MM-payload-in-SMRAM-without-unlocking-i.patch",
+		"0007-drivers-payload_mm_interface-reworked-no-unlock-appr.patch",
+		"0008-mb-intel-adlrvp-support-for-RVP-S-1-2.patch",
+		"0009-mb-intel-adlrvp-merged-support-for-RVP-S-M.patch",
+		"0010-mb-intel-adlrvp-support-for-RVP-S-2-2.patch",
+	}
+	patchesLinux = []string{
+		"0001-drivers-firmware-google-support-for-parsing-MM-paylo.patch",
+		"0002-drivers-firmware-google-loader-for-kernel-owned-SMI-.patch",
+		"0003-drivers-firmware-google-runtime-MM-entry-point-calcu.patch",
+	}
+	patchesTesting = []string{
+
+	}
 )
+
+func patch(target Patch) error {
+	switch target {
+	case coreboot:
+		var repoURL = "https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/coreboot/"
+		for _, patchName := range patchesCoreboot {
+			url := repoURL + patchName
+			cmd := exec.Command("wget", url)
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+			cmd.Dir = "coreboot-" + corebootVer 
+			if err := cmd.Run(); err != nil {
+				fmt.Printf("obtaining patch failed %v", err)
+				return err
+			}
+
+			cmd = exec.Command("git am", patchName)
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+			cmd.Dir = "coreboot-" + corebootVer 
+			if err := cmd.Run(); err != nil {
+				fmt.Printf("applying patch failed %v", err)
+				return err
+			}
+		}
+	case linux:
+		var repoURL = "https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/linux/"
+		for _, patchName := range patchesLinux {
+			url := repoURL + patchName
+			cmd := exec.Command("wget", url)
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+			cmd.Dir = "linux-smm" 
+			if err := cmd.Run(); err != nil {
+				fmt.Printf("obtaining patch failed %v", err)
+				return err
+			}
+
+			cmd = exec.Command("git am", patchName)
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+			cmd.Dir = "linux-smm"
+			if err := cmd.Run(); err != nil {
+				fmt.Printf("applying patch failed %v", err)
+				return err
+			}
+		}
+	default:
+		return fmt.Errorf("target not found");
+	}
+	return nil
+}
 
 func getGitVersion() error {
 	var args = []string{"clone", "https://github.com/micgor32/coreboot.git", "coreboot-" + corebootVer}
@@ -85,6 +163,71 @@ func getGitVersion() error {
 		fmt.Printf("didn't clone coreboot %v\n", err)
 		return err
 	}
+	
+	 switch *testing {
+	 case 1:
+	 	var noLockPatch = []string{"https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0002-loader-for-linux-owned-smi-handler.diff"}
+	 	cmd = exec.Command("wget", noLockPatch...)
+	 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	 	cmd.Dir = "coreboot-" + corebootVer 
+	 	if err := cmd.Run(); err != nil {
+	 		fmt.Printf("obtaining patch failed %v", err)
+	 		return err
+	 	}
+	
+	 	fmt.Printf("--------  Patching coreboot for tests\n")
+	 	var applyNoLock = []string{"am", "patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
+	 	cmd = exec.Command("git", applyNoLock...)
+	 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	 	cmd.Dir = "coreboot-" + corebootVer
+	 	if err := cmd.Run(); err != nil {
+	 		fmt.Printf("applying patch failed %v", err)
+	 		return err
+	 	}
+	 case 2:
+	 	var noLockNoRegPatch = []string{"https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0002-loader-for-linux-owned-smi-handler.diff"}
+	 	cmd = exec.Command("wget", noLockNoRegPatch...)
+	 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	 	cmd.Dir = "coreboot-" + corebootVer 
+	 	if err := cmd.Run(); err != nil {
+	 		fmt.Printf("obtaining patch failed %v", err)
+	 		return err
+	 	}
+	
+	 	fmt.Printf("--------  Patching coreboot for tests\n")
+	 	var applyNoLockNoReg = []string{"am", "patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
+	 	cmd = exec.Command("git", applyNoLockNoReg...)
+	 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	 	cmd.Dir = "coreboot-" + corebootVer
+	 	if err := cmd.Run(); err != nil {
+	 		fmt.Printf("applying patch failed %v", err)
+	 		return err
+	 	}
+	 case 3:
+	 	var noUnlockPatch = []string{"https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0002-loader-for-linux-owned-smi-handler.diff"}
+	 	cmd = exec.Command("wget", noUnlockPatch...)
+	 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	 	cmd.Dir = "coreboot-" + corebootVer 
+	 	if err := cmd.Run(); err != nil {
+	 		fmt.Printf("obtaining patch failed %v", err)
+	 		return err
+	 	}
+	
+	 	fmt.Printf("--------  Patching coreboot for tests\n")
+	 	var applyNoUnlock = []string{"am", "patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
+	 	cmd = exec.Command("git", applyNoUnlock...)
+	 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	 	cmd.Dir = "coreboot-" + corebootVer
+	 	if err := cmd.Run(); err != nil {
+	 		fmt.Printf("applying patch failed %v", err)
+	 		return err
+	 	}
+	
+	 default:
+	 	break
+	}
+
+
 	return nil
 }
 
@@ -112,7 +255,15 @@ func corebootGet() error {
 			return err
 		}
 	} else if *configPath == "q35" {
-		var config = []string{"-O", "defconfig", "https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-qemu"}
+		// well this is dirty way, but anyways...
+		var repoURL = ""
+		if *bitness == "32" || *bitness == "64" {
+			repoURL = "https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-qemu" + *bitness
+		} else {
+			repoURL = "https://raw.githubusercontent.com/micgor32/linuxbootsmm-builder/refs/heads/master/defconfig-qemu" + *bitness
+		}
+
+		var config = []string{"-O", "defconfig", repoURL}
 		cmd = exec.Command("wget", config...)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		cmd.Dir = "coreboot-" + corebootVer
@@ -137,6 +288,11 @@ func corebootGet() error {
 		}
 	}
 
+	if err := patch(coreboot); err != nil {
+		fmt.Printf("applying patches failed %v", err)
+		return err
+	}
+
 	cmd = exec.Command("make", "defconfig", "KBUILD_DEFCONFIG=defconfig")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Dir = "coreboot-" + corebootVer
@@ -148,47 +304,68 @@ func corebootGet() error {
 	return nil
 }
 
-func patchKernel() error {
-	// TODO: consider also checking the patch correctness before applying (i.e. run git apply --check *path_to_patch*).
-	var patchParsers = []string{"https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
-	cmd := exec.Command("wget", patchParsers...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "linux-smm"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("obtaining patch failed %v", err)
-		return err
-	}
+// func patchKernel() error {
+// 	// TODO: consider also checking the patch correctness before applying (i.e. run git apply --check *path_to_patch*).
+// 	var patchParsers = []string{"https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
+// 	cmd := exec.Command("wget", patchParsers...)
+// 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+// 	cmd.Dir = "linux-smm"
+// 	if err := cmd.Run(); err != nil {
+// 		fmt.Printf("obtaining patch failed %v", err)
+// 		return err
+// 	}
 
-	var patchLoader = []string{"https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0002-loader-for-linux-owned-smi-handler.diff"}
-	cmd = exec.Command("wget", patchLoader...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "linux-smm"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("obtaining patch failed %v", err)
-		return err
-	}
+// 	var patchLoader = []string{"https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0002-loader-for-linux-owned-smi-handler.diff"}
+// 	cmd = exec.Command("wget", patchLoader...)
+// 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+// 	cmd.Dir = "linux-smm"
+// 	if err := cmd.Run(); err != nil {
+// 		fmt.Printf("obtaining patch failed %v", err)
+// 		return err
+// 	}
 	
-	fmt.Printf("--------  Patching kernel\n")
-	var applyParsers = []string{"am", "patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
-	cmd = exec.Command("git", applyParsers...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "linux-smm"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("applying patch failed %v", err)
-		return err
-	}
+// 	fmt.Printf("--------  Patching kernel\n")
+// 	var applyParsers = []string{"am", "patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
+// 	cmd = exec.Command("git", applyParsers...)
+// 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+// 	cmd.Dir = "linux-smm"
+// 	if err := cmd.Run(); err != nil {
+// 		fmt.Printf("applying patch failed %v", err)
+// 		return err
+// 	}
 
-	var applyLoader = []string{"am", "patch-0002-loader-for-linux-owned-smi-handler.diff"}
-	cmd = exec.Command("git", applyLoader...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "linux-smm"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("applying patch failed %v\n", err)
-		return err
-	}
+// 	var applyLoader = []string{"am", "patch-0002-loader-for-linux-owned-smi-handler.diff"}
+// 	cmd = exec.Command("git", applyLoader...)
+// 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+// 	cmd.Dir = "linux-smm"
+// 	if err := cmd.Run(); err != nil {
+// 		fmt.Printf("applying patch failed %v\n", err)
+// 		return err
+// 	}
+
+// 	// if *testing == 6 || *testing == 7 {
+// 	// 	var patchLoader = []string{"https://raw.githubusercontent.com/9elements/LinuxBootSMM/refs/heads/main/poc/patches/patch-0002-loader-for-linux-owned-smi-handler.diff"}
+// 	// 	cmd = exec.Command("wget", patchLoader...)
+// 	// 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+// 	// 	cmd.Dir = "linux-smm"
+// 	// 	if err := cmd.Run(); err != nil {
+// 	// 		fmt.Printf("obtaining patch failed %v", err)
+// 	// 		return err
+// 	// 	}
 	
-	return nil
-}
+// 	// 	fmt.Printf("--------  Patching kernel for tests\n")
+// 	// 	var applyParsers = []string{"am", "patch-0001-drivers-firmware-smm-parsing-SMM-related-informations-from-coreboot-table.diff"}
+// 	// 	cmd = exec.Command("git", applyParsers...)
+// 	// 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+// 	// 	cmd.Dir = "linux-smm"
+// 	// 	if err := cmd.Run(); err != nil {
+// 	// 		fmt.Printf("applying patch failed %v", err)
+// 	// 		return err
+// 	// 	}
+// 	// }
+	
+// 	return nil
+// }
 
 func getKernel() error {
 	var args = []string{"clone", "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git", "linux-smm"}
@@ -201,7 +378,7 @@ func getKernel() error {
 			fmt.Printf("didn't cloned the kernel %v\n", err)
 			return err
 		}
-		patchKernel();
+		patch(linux);
 	}
 
 	if *smpEnabled {
@@ -255,35 +432,6 @@ func kernelBuild() error {
 	return nil
 }
 
-func initramfsGen() error {
-	pwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(pwd + "/uroot/u-root","-build", "bb", "-initcmd", "init", "-uinitcmd", "boot", "-defaultsh", "gosh", "-o", "initramfs_u-root.cpio", "core", "boot", "coreboot-app")
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "uroot"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("error when builing the initramfs %v\n", err)
-		return err
-	}
-
-	cmd = exec.Command("xz", "-f","--check", "crc32", "--lzma2=dict=512KiB", "initramfs_u-root.cpio")
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "uroot"
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("error when builing the initramfs %v\n", err)
-		return err
-	}
-	
-	if err := cp.Copy("uroot/initramfs_u-root.cpio.xz", "coreboot-" + corebootVer + "/site-local/initramfs_u-root.cpio.xz"); err != nil {
-		fmt.Printf("error copying the initramfs %v\n", err)
-		return err
-	}
-
-	return nil
-}
-
 func buildCoreboot() error {
 	// Let's check whether the config is there
 	if _, err := os.Stat("coreboot-" + corebootVer + "/.config"); err != nil {
@@ -292,8 +440,6 @@ func buildCoreboot() error {
 
 	kernelBuild()
 	corebootGet()
-
-	initramfsGen()
 
 	cmd := exec.Command("make", "-j"+strconv.Itoa(threads))
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -326,27 +472,6 @@ func check() error {
 	return nil
 }
 
-// Ugly, but fast way to deal with getting u-root up to run
-func urootInstall() error {
-	var args = []string{"clone", "https://github.com/u-root/u-root", "/tmp/uroot"}
-	cmd := exec.Command("git", args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("didn't cloned uroot %v\n", err)
-		return err
-	}
-
-	cmd = exec.Command("go", "build")
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	cmd.Dir = "/tmp/uroot"
-	err := cmd.Run()
-	if err != nil {
-		return err
-	}
-	 
-	return nil
-}
-
 func pacmaninstall() error {
 	missing := []string{}
 	for _, packageName := range packageListArch {
@@ -357,7 +482,7 @@ func pacmaninstall() error {
 	}
 
 	if len(missing) == 0 {
-		fmt.Println("No missing dependencies to install\n")
+		fmt.Println("No missing dependencies to install")
 		return nil
 	}
 
@@ -416,12 +541,9 @@ func aptget() error {
 }
 
 func depinstall() error {
-	// Regardless of the distro, we need u-root
-	urootInstall()
-
 	cfg, err := ini.Load("/etc/os-release")
     if err != nil {
-        log.Fatal("Fail to read file: %v\n", err)
+        fmt.Printf("Fail to read file: %v", err)
     }
 
     ConfigParams := make(map[string]string)
